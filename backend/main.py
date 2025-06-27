@@ -1,5 +1,5 @@
 # backend/main.py
-from fastapi import FastAPI, Query, Body
+from fastapi import FastAPI, Query, Body, HTTPException
 from typing import List
 import os
 import json
@@ -14,8 +14,6 @@ load_dotenv()
 
 OPENAI_KEY = os.getenv("OPENAI_KEY")
 app = FastAPI()
-with open("recipes/recipes.json") as f:
-    RECIPES = json.load(f)
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=OPENAI_KEY)
@@ -24,6 +22,8 @@ openai_client = OpenAI(api_key=OPENAI_KEY)
 class PromptRequest(BaseModel):
     prompt: str
 
+class GenerateRequest(BaseModel):
+    prompt: str
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
@@ -39,16 +39,10 @@ if not SPOON_KEY:
 
 @app.get("/recipes")
 def get_random_recipes():
-    url = f"https://api.spoonacular.com/recipes/random?number=100&apiKey={SPOON_KEY}"
+    url = f"https://api.spoonacular.com/recipes/random?number=50&apiKey={SPOON_KEY}"
     response = requests.get(url)
     return response.json()
 
-@app.post("/recipes/by-ingredients")
-def get_by_ingredients(ingredients: List[str]):
-    return [
-        r for r in RECIPES
-        if all(i in r["ingredients"] for i in ingredients)
-    ]
 
 @app.get("/recipes/{id}")
 def get_recipe(id: int):
@@ -56,6 +50,42 @@ def get_recipe(id: int):
     response = requests.get(url)
     return response.json()
 
+
+@app.post("/recipes/generate")
+def generate_recipe(req: GenerateRequest):
+    # 1) Ask OpenAI to produce a single recipe in strict JSON
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a recipe generator. "
+                "Given a user prompt, output **only** valid JSON** with these fields:**\n"
+                "  • title: string\n"
+                "  • mealTime: string (e.g. Breakfast, Lunch, Dinner)\n"
+                "  • ingredients: array of strings\n"
+                "  • instructions: array of strings\n"
+                "Don’t include any extra commentary—just the JSON object."
+            )
+        },
+        {"role": "user", "content": req.prompt}
+    ]
+
+    resp = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=messages
+    )
+
+    text = resp.choices[0].message.content
+
+    try:
+        recipe = json.loads(text)
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not parse recipe JSON:\n{text}"
+        )
+
+    return recipe
 
 @app.post("/recipes/from-text")
 def get_recipes_from_text(body: PromptRequest):

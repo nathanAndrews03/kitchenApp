@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Clock, DollarSign, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import VoiceSearchBar from './VoiceSearchBar';
+
+
+
+
 
 const CookingApp = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [recipes, setRecipes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [listLoading, setListLoading] = useState(true);
+  const [aiLoading, setAiLoading]     = useState(false);
+    const [error, setError] = useState(null);
+  const [aiRecipe, setAiRecipe] = useState(null);
 
   // Fetch recipes from your FastAPI backend
   useEffect(() => {
     const fetchRecipes = async () => {
       try {
-        setLoading(true);
+        setListLoading(true);
         const response = await fetch('http://localhost:8000/recipes');
         if (!response.ok) {
           throw new Error('Failed to fetch recipes');
@@ -21,33 +29,53 @@ const CookingApp = () => {
       } catch (err) {
         setError(err.message);
       } finally {
-        setLoading(false);
+        setListLoading(false);
       }
     };
 
     fetchRecipes();
   }, []);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return
-    try {
-      setLoading(true)
-      setError(null)
-      const res = await fetch('http://localhost:8000/recipes/from-text', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: searchQuery }),
-      })
-      if (!res.ok) throw new Error('Search failed')
-      const data = await res.json()
-      setRecipes(data.results || [])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const handleSearch = async (overrideQuery) => {
+    const prompt = overrideQuery ?? searchQuery;
+    if (!prompt.trim()) return;
   
+    setError(null);
+    
+    // 1) kick off the list fetch
+    setListLoading(true);
+    fetch('http://localhost:8000/recipes/from-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('List search failed');
+        return res.json();
+      })
+      .then(json => setRecipes(json.results || []))
+      .catch(err => setError(err.message))
+      .finally(() => setListLoading(false));
+  
+    // 2) kick off the AI‐generate fetch
+    setAiLoading(true);
+    fetch('http://localhost:8000/recipes/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt }),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Generate failed');
+        return res.json();
+      })
+      .then(json => setAiRecipe(json))
+      .catch(err => setError(err.message))
+      .finally(() => setAiLoading(false));
+  };
+
+
+
+
   // Organize recipes by categories (you can enhance this logic based on Spoonacular data)
   const organizeRecipesByCategory = (recipes) => {
     const categories = {
@@ -132,8 +160,11 @@ const CookingApp = () => {
       ));
     };
 
+    const navigate = useNavigate();
+
     return (
-      <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer group min-w-[280px] mx-2">
+      <div onClick={() => navigate(`/recipe/${recipe.id}`)}
+        className="bg-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer group min-w-[280px] mx-2">
         <div className="relative">
           <img
             src={recipe.image || '/api/placeholder/300/200'}
@@ -232,7 +263,7 @@ const CookingApp = () => {
 
   const categories = organizeRecipesByCategory(recipes);
 
-  if (loading) {
+  if (listLoading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-white text-xl">Loading recipes...</div>
@@ -253,73 +284,84 @@ const CookingApp = () => {
       {/* Header */}
       <div className="p-6">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-white text-4xl font-bold">AI Assistant</h1>
           <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center">
-            <div className="w-6 h-6 bg-white rounded transform rotate-45"></div>
+            <div className="w-6 h-6 bg-white rounded transform rotate-45" />
           </div>
         </div>
-
-        {/* Search Bar */}
-        <div className="max-w-2xl mx-auto mb-8">
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="What's cooking ?"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-gray-800 text-white px-6 py-4 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-  onClick={handleSearch}
-  className="absolute right-14 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-blue-500"
->
-  Search
-</button>
-            <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Filter Buttons */}
-        <div className="flex gap-4 mb-8">
-          <button className="bg-gray-800 text-white px-6 py-2 rounded-full border border-gray-600 hover:bg-gray-700 transition-colors">
-            Meal Type ▾
-          </button>
-          <button className="bg-gray-800 text-white px-6 py-2 rounded-full border border-gray-600 hover:bg-gray-700 transition-colors">
-            Culture ▾
-          </button>
-        </div>
       </div>
-
-      {/* Recipe Categories */}
-      <div className="space-y-8">
-        <RecipeRow 
-          title="RECOMMENDED" 
-          recipes={categories.recommended.slice(0, 10)} 
-          category="recommended" 
-        />
-        <RecipeRow 
-          title="QUICK MEALS" 
-          recipes={categories.quickMeals} 
-          category="quickMeals" 
-        />
-        <RecipeRow 
-          title="VEGETARIAN" 
-          recipes={categories.vegetarian} 
-          category="vegetarian" 
-        />
-        <RecipeRow 
-          title="MAIN COURSE" 
-          recipes={categories.mainCourse} 
-          category="mainCourse" 
-        />
-        <RecipeRow 
-          title="DESSERTS" 
-          recipes={categories.desserts} 
-          category="desserts" 
-        />
+  
+      {/* Search Bar */}
+      <div className="max-w-2xl mx-auto mb-8">
+        <VoiceSearchBar onSearch={handleSearch} />
       </div>
+  
+      {/* AI recipe: loading state or content */}
+      {aiLoading ? (
+        <div className="text-white text-center mt-6">
+          Generating AI recipe…
+        </div>
+      ) : aiRecipe ? (
+        <div className="max-w-2xl mx-auto mb-8 bg-gray-800 p-6 rounded-lg">
+          <h2 className="text-white text-2xl font-bold mb-2">
+            {aiRecipe.title}
+          </h2>
+          <p className="text-gray-400 italic mb-4">
+            Meal Time: {aiRecipe.mealTime}
+          </p>
+          <h3 className="text-white font-semibold">Ingredients</h3>
+          <ul className="list-disc list-inside text-gray-200 mb-4">
+            {aiRecipe.ingredients.map((ing, i) => (
+              <li key={i}>{ing}</li>
+            ))}
+          </ul>
+          <h3 className="text-white font-semibold">Instructions</h3>
+          <ol className="list-decimal list-inside text-gray-200">
+            {aiRecipe.instructions.map((step, i) => (
+              <li key={i} className="mb-1">
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
+  
+      {/* Recipe Categories list: loading state or rows */}
+      {listLoading ? (
+        <div className="text-white text-xl flex justify-center">
+          Loading recipes…
+        </div>
+      ) : (
+        <div className="space-y-8">
+          <RecipeRow
+            title="RECOMMENDED"
+            recipes={categories.recommended.slice(0, 10)}
+            category="recommended"
+          />
+          <RecipeRow
+            title="QUICK MEALS"
+            recipes={categories.quickMeals}
+            category="quickMeals"
+          />
+          <RecipeRow
+            title="VEGETARIAN"
+            recipes={categories.vegetarian}
+            category="vegetarian"
+          />
+          <RecipeRow
+            title="MAIN COURSE"
+            recipes={categories.mainCourse}
+            category="mainCourse"
+          />
+          <RecipeRow
+            title="DESSERTS"
+            recipes={categories.desserts}
+            category="desserts"
+          />
+        </div>
+      )}
     </div>
   );
+  
 };
 
 export default CookingApp;
