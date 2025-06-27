@@ -1,0 +1,8 @@
+[
+    {
+      "name": "Spaghetti Bolognese",
+      "region": "Italian",
+      "ingredients": ["spaghetti", "tomato", "beef"],
+      "instructions": "Boil pasta. Cook meat. Mix with sauce."
+    }
+  ]
