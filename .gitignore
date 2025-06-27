@@ -1,2 +1,16 @@
 venv/
 node_modules/
+.env
+
+# Python env & caches
+backend/.env
+backend/__pycache__/
+*.pyc
+
+# React/node
+frontend/node_modules/
+frontend/build/
+frontend/.env
+
+# macOS
+.DS_Store

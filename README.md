@@ -1,7 +1,8 @@
+## Setup
+
+```bash
 cd backend
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate
-
-pip install fastapi uvicorn
-pip install openai
-
+pip install -r requirements.txt
+uvicorn main:app --reload
