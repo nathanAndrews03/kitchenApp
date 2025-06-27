@@ -1,0 +1,325 @@
+import React, { useState, useEffect } from 'react';
+import { Search, Clock, DollarSign, Star, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const CookingApp = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [recipes, setRecipes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch recipes from your FastAPI backend
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('http://localhost:8000/recipes');
+        if (!response.ok) {
+          throw new Error('Failed to fetch recipes');
+        }
+        const data = await response.json();
+        setRecipes(data.recipes || []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecipes();
+  }, []);
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return
+    try {
+      setLoading(true)
+      setError(null)
+      const res = await fetch('http://localhost:8000/recipes/from-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: searchQuery }),
+      })
+      if (!res.ok) throw new Error('Search failed')
+      const data = await res.json()
+      setRecipes(data.results || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  // Organize recipes by categories (you can enhance this logic based on Spoonacular data)
+  const organizeRecipesByCategory = (recipes) => {
+    const categories = {
+      recommended: [],
+      quickMeals: [],
+      vegetarian: [],
+      desserts: [],
+      mainCourse: []
+    };
+
+    recipes.forEach(recipe => {
+      // Add to recommended by default
+      categories.recommended.push(recipe);
+
+      // Categorize based on ready time
+      if (recipe.readyInMinutes <= 30) {
+        categories.quickMeals.push(recipe);
+      }
+
+      // Categorize based on dish types or diet info
+      if (recipe.vegetarian) {
+        categories.vegetarian.push(recipe);
+      }
+
+      if (recipe.dishTypes?.includes('dessert')) {
+        categories.desserts.push(recipe);
+      }
+
+      if (recipe.dishTypes?.includes('main course') || recipe.dishTypes?.includes('main dish')) {
+        categories.mainCourse.push(recipe);
+      }
+    });
+
+    return categories;
+  };
+
+  const RecipeCard = ({ recipe }) => {
+    const getTimeIndicator = (minutes) => {
+      // Convert minutes to a 1-5 scale for circles
+      const timeScale = Math.min(Math.ceil(minutes / 30), 5);
+      return Array.from({ length: 5 }, (_, i) => (
+        <div
+          key={i}
+          className={`w-3 h-3 rounded-full border-2 ${
+            i < timeScale ? 'bg-white border-white' : 'border-gray-400'
+          }`}
+        />
+      ));
+    };
+
+    const getCostIndicator = (pricePerServing) => {
+      // Convert price to a 1-5 scale for dollar signs
+      const costScale = pricePerServing ? Math.min(Math.ceil(pricePerServing / 100), 5) : 2;
+      return Array.from({ length: 5 }, (_, i) => (
+        <span
+          key={i}
+          className={i < costScale ? 'text-green-400' : 'text-gray-600'}
+        >
+          $
+        </span>
+      ));
+    };
+
+    
+    const getStars = (score) => {
+      // Convert spoonacular score (0-100) to 5-star rating
+      const rating = score ? (score / 100) * 5 : 3;
+      const fullStars = Math.floor(rating);
+      const hasHalfStar = rating % 1 >= 0.5;
+
+      return Array.from({ length: 5 }, (_, i) => (
+        <Star
+          key={i}
+          className={`w-4 h-4 ${
+            i < fullStars
+              ? 'fill-yellow-400 text-yellow-400'
+              : i === fullStars && hasHalfStar
+              ? 'fill-yellow-400/50 text-yellow-400'
+              : 'text-gray-600'
+          }`}
+        />
+      ));
+    };
+
+    return (
+      <div className="bg-gray-800 rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer group min-w-[280px] mx-2">
+        <div className="relative">
+          <img
+            src={recipe.image || '/api/placeholder/300/200'}
+            alt={recipe.title}
+            className="w-full h-40 object-cover"
+            onError={(e) => {
+              e.target.src = '/api/placeholder/300/200';
+            }}
+          />
+          <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-20 transition-opacity duration-300" />
+        </div>
+        
+        <div className="p-4">
+          <h3 className="text-white font-bold text-lg mb-3 line-clamp-2">{recipe.title}</h3>
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-400 text-sm">Time</span>
+              <div className="flex gap-1">
+                {getTimeIndicator(recipe.readyInMinutes)}
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-gray-400 text-sm">Cost</span>
+              <div className="flex text-sm">
+                {getCostIndicator(recipe.pricePerServing)}
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <span className="text-gray-400 text-sm">Rating</span>
+              <div className="flex gap-1">
+                {getStars(recipe.spoonacularScore)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const RecipeRow = ({ title, recipes, category }) => {
+    const [scrollPosition, setScrollPosition] = useState(0);
+    const containerRef = React.useRef(null);
+
+    const scroll = (direction) => {
+      const container = containerRef.current;
+      if (container) {
+        const scrollAmount = 300;
+        const newPosition = direction === 'left' 
+          ? Math.max(0, scrollPosition - scrollAmount)
+          : scrollPosition + scrollAmount;
+        
+        container.scrollTo({
+          left: newPosition,
+          behavior: 'smooth'
+        });
+        setScrollPosition(newPosition);
+      }
+    };
+
+    if (!recipes || recipes.length === 0) return null;
+
+    return (
+      <div className="mb-8">
+        <h2 className="text-white text-2xl font-bold mb-4 px-4">{title}</h2>
+        <div className="relative group">
+          <button
+            onClick={() => scroll('left')}
+            className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          
+          <div
+            ref={containerRef}
+            className="flex overflow-x-auto scrollbar-hide px-4 pb-4"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {recipes.map((recipe) => (
+              <RecipeCard key={recipe.id} recipe={recipe} />
+            ))}
+          </div>
+          
+          <button
+            onClick={() => scroll('right')}
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const categories = organizeRecipesByCategory(recipes);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading recipes...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-red-400 text-xl">Error: {error}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-white text-4xl font-bold">AI Assistant</h1>
+          <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center">
+            <div className="w-6 h-6 bg-white rounded transform rotate-45"></div>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="max-w-2xl mx-auto mb-8">
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="What's cooking ?"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-gray-800 text-white px-6 py-4 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+  onClick={handleSearch}
+  className="absolute right-14 top-1/2 transform -translate-y-1/2 text-blue-400 hover:text-blue-500"
+>
+  Search
+</button>
+            <Search className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-6 h-6" />
+          </div>
+        </div>
+
+        {/* Filter Buttons */}
+        <div className="flex gap-4 mb-8">
+          <button className="bg-gray-800 text-white px-6 py-2 rounded-full border border-gray-600 hover:bg-gray-700 transition-colors">
+            Meal Type ▾
+          </button>
+          <button className="bg-gray-800 text-white px-6 py-2 rounded-full border border-gray-600 hover:bg-gray-700 transition-colors">
+            Culture ▾
+          </button>
+        </div>
+      </div>
+
+      {/* Recipe Categories */}
+      <div className="space-y-8">
+        <RecipeRow 
+          title="RECOMMENDED" 
+          recipes={categories.recommended.slice(0, 10)} 
+          category="recommended" 
+        />
+        <RecipeRow 
+          title="QUICK MEALS" 
+          recipes={categories.quickMeals} 
+          category="quickMeals" 
+        />
+        <RecipeRow 
+          title="VEGETARIAN" 
+          recipes={categories.vegetarian} 
+          category="vegetarian" 
+        />
+        <RecipeRow 
+          title="MAIN COURSE" 
+          recipes={categories.mainCourse} 
+          category="mainCourse" 
+        />
+        <RecipeRow 
+          title="DESSERTS" 
+          recipes={categories.desserts} 
+          category="desserts" 
+        />
+      </div>
+    </div>
+  );
+};
+
+export default CookingApp;

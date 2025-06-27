@@ -1,16 +1,38 @@
+# ---------- Python / FastAPI backend ----------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.cpython-*
+
+# Virtual envs
 venv/
-node_modules/
-.env
+backend/venv/
 
-# Python env & caches
+# Environment & secrets
+*.env
 backend/.env
-backend/__pycache__/
-*.pyc
 
-# React/node
+# Editor / stray
+*.copy
+
+# ---------- React frontend ----------
+# Dependencies
 frontend/node_modules/
+
+# Build output
 frontend/build/
+
+# Environment variables
 frontend/.env
 
-# macOS
+# ---------- macOS / Editor files ----------
+# macOS Finder
 .DS_Store
+
+# VS Code / JetBrains
+.vscode/
+.idea/
+
+*.copy
+
+frontend/tailwindcss
